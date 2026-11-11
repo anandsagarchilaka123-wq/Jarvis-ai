@@ -11,12 +11,19 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Content-Type", "application/json");
 
+  const path = new URL(
+    req.url,
+    `http://${req.headers.host || "localhost"}`
+  ).pathname;
+
+  // OPTIONS request
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     return res.end();
   }
 
-  if (req.method === "GET" && req.url === "/") {
+  // HOME ROUTE
+  if (req.method === "GET" && path === "/") {
     res.writeHead(200);
     return res.end(JSON.stringify({
       status: "success",
@@ -24,19 +31,30 @@ const server = http.createServer(async (req, res) => {
     }));
   }
 
-  if (req.method === "POST" && req.url === "/chat") {
+  // HEALTH CHECK
+  if (req.method === "GET" && path === "/health") {
+    res.writeHead(200);
+    return res.end(JSON.stringify({
+      status: "online",
+      assistant: "JARVIS",
+      provider: "Groq"
+    }));
+  }
+
+  // CHAT ROUTE
+  if (req.method === "POST" && path === "/chat") {
 
     if (!API_KEY) {
       res.writeHead(500);
       return res.end(JSON.stringify({
-        error: "GROQ_API_KEY is not configured"
+        error: "GROQ_API_KEY is not configured in Render"
       }));
     }
 
     let body = "";
 
     req.on("data", chunk => {
-      body += chunk;
+      body += chunk.toString();
 
       if (body.length > 100000) {
         res.writeHead(413);
@@ -48,6 +66,7 @@ const server = http.createServer(async (req, res) => {
     });
 
     req.on("end", async () => {
+
       if (res.writableEnded) return;
 
       try {
@@ -75,14 +94,13 @@ const server = http.createServer(async (req, res) => {
                 {
                   role: "system",
                   content:
-                    "You are JARVIS, a friendly AI voice assistant. Reply naturally in Telugu or English according to the user's language. Keep answers clear and conversational."
+                    "You are JARVIS, a friendly personal AI voice assistant. Reply in Telugu when the user speaks Telugu and English when the user speaks English. Be helpful, clear and conversational."
                 },
                 {
                   role: "user",
                   content: message
                 }
               ],
-              temperature: 0.7,
               max_completion_tokens: 1024
             })
           }
@@ -92,7 +110,7 @@ const server = http.createServer(async (req, res) => {
 
         if (!response.ok) {
           throw new Error(
-            result.error?.message || "Groq AI request failed"
+            result.error?.message || "Groq API request failed"
           );
         }
 
@@ -100,7 +118,7 @@ const server = http.createServer(async (req, res) => {
           result.choices?.[0]?.message?.content;
 
         if (!reply) {
-          throw new Error("Empty response from Groq AI");
+          throw new Error("No reply received from Groq");
         }
 
         res.writeHead(200);
@@ -109,7 +127,8 @@ const server = http.createServer(async (req, res) => {
         }));
 
       } catch (error) {
-        console.error("JARVIS Error:", error.message);
+
+        console.error("JARVIS ERROR:", error.message);
 
         if (!res.writableEnded) {
           res.writeHead(500);
@@ -123,12 +142,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // INVALID ROUTE
   res.writeHead(404);
   res.end(JSON.stringify({
-    error: "Not Found"
+    error: "Not Found",
+    requestedPath: path
   }));
+
 });
 
 server.listen(PORT, () => {
-  console.log(`JARVIS AI running on port ${PORT}`);
+  console.log("================================");
+  console.log("JARVIS AI SERVER STARTED");
+  console.log("PORT:", PORT);
+  console.log("GROQ API:", API_KEY ? "CONFIGURED" : "MISSING");
+  console.log("================================");
 });
